@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      - POSTGRES_USER=tuum
+      - POSTGRES_PASSWORD=changeme
+      - POSTGRES_DB=account
+    ports:
+      - 5432:5432
+    expose:
+      - 5432
+    networks:
+      - account-service-network
+  tuum-account:
+    image: metsmarko/tuum-account
+    environment:
+      - POSTGRES_USER=tuum
+      - POSTGRES_PASSWORD=changeme
+      - POSTGRES_DB=account
+      - POSTGRES_HOST=postgres
+    ports:
+      - 8080:8080
+    networks:
+      - account-service-network
+
+networks:
+  account-service-network:
