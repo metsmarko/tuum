@@ -9,6 +9,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.TypeFactory;
+import ee.metsmarko.tuum.account.event.AccountCreateEvent;
+import ee.metsmarko.tuum.account.event.BalanceChangeEvent;
+import ee.metsmarko.tuum.account.event.TransactionCreateEvent;
 import ee.metsmarko.tuum.exception.ErrorResponse;
 import java.math.BigDecimal;
 import java.util.List;
@@ -17,32 +20,41 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.containers.RabbitMQContainer;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers
 @SpringBootTest
 @ContextConfiguration(initializers = {AccountTest.Initializer.class})
 @AutoConfigureMockMvc
+@Import(RabbitMqTestConf.class)
 public class AccountTest {
 
   @Autowired
   private ObjectMapper mapper;
-
+  @Autowired
+  private RabbitTemplate template;
   private static final PostgreSQLContainer<?> pgContainer = new PostgreSQLContainer<>("postgres:14")
       .withDatabaseName("tuum-db")
       .withUsername("tuum-user")
       .withPassword("tuum-pw");
+
+  private static final RabbitMQContainer mqContainer = new RabbitMQContainer("rabbitmq:3.10.6");
 
   static class Initializer
       implements ApplicationContextInitializer<ConfigurableApplicationContext> {
@@ -50,14 +62,22 @@ public class AccountTest {
       TestPropertyValues.of(
           "spring.datasource.url=" + pgContainer.getJdbcUrl(),
           "spring.datasource.username=" + pgContainer.getUsername(),
-          "spring.datasource.password=" + pgContainer.getPassword()
+          "spring.datasource.password=" + pgContainer.getPassword(),
+          "spring.rabbitmq.host=localhost",
+          "spring.rabbitmq.port=" + mqContainer.getMappedPort(5672),
+          "spring.rabbitmq.username=guest",
+          "spring.rabbitmq.password=guest"
       ).applyTo(configurableApplicationContext.getEnvironment());
     }
   }
 
+  @Autowired
+  private Queue queue;
+
   @BeforeAll
   static void beforeAll() {
     pgContainer.start();
+    mqContainer.start();
   }
 
   @Autowired
@@ -162,7 +182,7 @@ public class AccountTest {
 
   private AccountBalance getBalance(Account account, String currency) {
     return account.getAccountBalances().stream().filter(it -> it.getCurrency().equals(currency))
-        .findFirst().get();
+        .findFirst().orElseThrow();
   }
 
   private CreateTransactionResponse createTransactionAndVerify(Account account,
@@ -177,12 +197,25 @@ public class AccountTest {
     CreateTransactionResponse createTransactionResponse =
         mapper.readValue(result.getResponse().getContentAsByteArray(),
             CreateTransactionResponse.class);
+
     assertNotNull(createTransactionResponse.transactionId());
     assertEquals(account.getId(), createTransactionResponse.accountId());
     assertEquals(request.amount(), createTransactionResponse.amount());
     assertEquals(request.currency(), createTransactionResponse.currency());
     assertEquals(request.direction(), createTransactionResponse.direction());
     assertEquals(request.description(), createTransactionResponse.description());
+
+    TransactionCreateEvent tcEvent =
+        mapper.readValue(readQueue().getBody(), TransactionCreateEvent.class);
+    assertEquals(createTransactionResponse.transactionId(), tcEvent.transactionId());
+    assertEquals(createTransactionResponse.accountId(), tcEvent.accountId());
+
+    BalanceChangeEvent bcEvent = mapper.readValue(readQueue().getBody(), BalanceChangeEvent.class);
+    assertEquals(createTransactionResponse.accountId(), bcEvent.accountId());
+    assertEquals(createTransactionResponse.amount(), bcEvent.amount());
+    assertEquals(createTransactionResponse.currentBalance(), bcEvent.newBalance());
+    assertEquals(createTransactionResponse.currency(), bcEvent.currency());
+
     return createTransactionResponse;
   }
 
@@ -205,11 +238,18 @@ public class AccountTest {
       assertTrue(accountRequest.currencies().contains(balance.getCurrency()));
       assertEquals(BigDecimal.ZERO, balance.getBalance());
     }
+    AccountCreateEvent event = mapper.readValue(readQueue().getBody(), AccountCreateEvent.class);
+    assertEquals(account.getId(), event.accountId());
     return account;
+  }
+
+  private Message readQueue() {
+    return template.receive(queue.getName(), 1000);
   }
 
   @AfterAll
   static void afterAll() {
     pgContainer.close();
+    mqContainer.close();
   }
 }

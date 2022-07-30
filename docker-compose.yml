@@ -11,6 +11,19 @@ services:
       - 5432
     networks:
       - account-service-network
+
+  rabbitmq:
+    image: rabbitmq:3.10.6-management
+    ports:
+      - 15672:15672
+    expose:
+      - 5672
+    environment:
+      - RABBITMQ_DEFAULT_USER=tuum
+      - RABBITMQ_DEFAULT_PASS=changeme
+    networks:
+      - account-service-network
+
   tuum-account:
     image: metsmarko/tuum-account
     environment:
@@ -18,6 +31,9 @@ services:
       - POSTGRES_PASSWORD=changeme
       - POSTGRES_DB=account
       - POSTGRES_HOST=postgres
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_USER=tuum
+      - RABBITMQ_PASSWORD=changeme
     ports:
       - 8080:8080
     networks:

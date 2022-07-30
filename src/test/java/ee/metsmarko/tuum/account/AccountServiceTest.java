@@ -10,8 +10,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import ee.metsmarko.tuum.account.event.AccountEventPublisher;
 import ee.metsmarko.tuum.exception.TuumException;
 import ee.metsmarko.tuum.exception.TuumInvalidInputException;
 import java.math.BigDecimal;
@@ -27,13 +29,15 @@ import org.junit.jupiter.params.provider.ValueSource;
 class AccountServiceTest {
   private final UUID accountId = UUID.randomUUID();
   private final AccountMapper accountMapper = mock(AccountMapper.class);
-  private final AccountService accountService = new AccountService(accountMapper);
-  private final Account account = accountService.createAccount(
-      new CreateAccountRequest(accountId, "EE", new LinkedHashSet<>(List.of("USD", "EUR")))
+  private final AccountEventPublisher eventPublisher = mock(AccountEventPublisher.class);
+  private final AccountService accountService = new AccountService(accountMapper, eventPublisher);
+  private final Account account = new Account(
+      accountId, UUID.randomUUID(), "EE",
+      List.of(
+          new AccountBalance("USD", BigDecimal.ZERO),
+          new AccountBalance("EUR", BigDecimal.ZERO)
+      )
   );
-
-  AccountServiceTest() throws TuumException {
-  }
 
   @Test
   void testCreateAccount_Ok() throws TuumException {
@@ -51,6 +55,7 @@ class AccountServiceTest {
 
     verify(accountMapper).createAccount(account);
     verify(accountMapper).createAccountBalance(account);
+    verify(eventPublisher).accountCreated(eq(account));
   }
 
   @Test
@@ -107,6 +112,8 @@ class AccountServiceTest {
 
     verify(accountMapper).increaseBalance(eq(accountId), eq("EUR"), eq(BigDecimal.TEN));
     assertEquals(BigDecimal.TEN, transaction.currentBalance());
+    verify(eventPublisher).transactionCreated(any());
+    verify(eventPublisher).balanceChanged(transaction);
   }
 
   @Test
@@ -125,6 +132,8 @@ class AccountServiceTest {
 
     verify(accountMapper).decreaseBalance(eq(accountId), eq("EUR"), eq(BigDecimal.TEN));
     assertEquals(BigDecimal.ZERO, transaction.currentBalance());
+    verify(eventPublisher).transactionCreated(any());
+    verify(eventPublisher).balanceChanged(transaction);
   }
 
   @Test
@@ -142,6 +151,7 @@ class AccountServiceTest {
 
     verify(accountMapper, never()).decreaseBalance(any(), any(), any());
     assertEquals("insufficient funds", ex.getMessage());
+    verifyNoInteractions(eventPublisher);
   }
 
   @Test
@@ -229,6 +239,7 @@ class AccountServiceTest {
     );
 
     assertEquals(errorMessage, ex.getMessage());
+    verifyNoInteractions(eventPublisher);
   }
 
   private void verifyNewAccountError(CreateAccountRequest request, String errorMessage) {
@@ -238,5 +249,6 @@ class AccountServiceTest {
         ));
 
     assertEquals(errorMessage, ex.getMessage());
+    verifyNoInteractions(eventPublisher);
   }
 }

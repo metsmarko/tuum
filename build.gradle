@@ -43,11 +43,11 @@ dependencies {
 
     runtimeOnly 'org.postgresql:postgresql'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.springframework.amqp:spring-rabbit-test'
 
     integrationTestImplementation 'org.testcontainers:testcontainers:1.17.2'
     integrationTestImplementation 'org.testcontainers:junit-jupiter:1.17.2'
     integrationTestImplementation 'org.testcontainers:postgresql:1.17.2'
+    integrationTestImplementation 'org.testcontainers:rabbitmq:1.17.2'
 }
 
 tasks.named('test') {

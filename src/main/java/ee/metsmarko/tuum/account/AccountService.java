@@ -1,5 +1,6 @@
 package ee.metsmarko.tuum.account;
 
+import ee.metsmarko.tuum.account.event.AccountEventPublisher;
 import ee.metsmarko.tuum.exception.TuumException;
 import ee.metsmarko.tuum.exception.TuumInvalidInputException;
 import java.math.BigDecimal;
@@ -18,9 +19,11 @@ public class AccountService {
   private static final Set<String> ALLOWED_CURRENCIES = Set.of("EUR", "SEK", "GBP", "USD");
 
   private final AccountMapper accountMapper;
+  private final AccountEventPublisher eventPublisher;
 
-  public AccountService(AccountMapper accountMapper) {
+  public AccountService(AccountMapper accountMapper, AccountEventPublisher eventPublisher) {
     this.accountMapper = accountMapper;
+    this.eventPublisher = eventPublisher;
   }
 
   /**
@@ -40,6 +43,7 @@ public class AccountService {
     );
     accountMapper.createAccount(account);
     accountMapper.createAccountBalance(account);
+    eventPublisher.accountCreated(account);
     return account;
   }
 
@@ -65,17 +69,20 @@ public class AccountService {
   public CreateTransactionResponse createTransaction(
       UUID accountId, CreateTransactionRequest createTransactionRequest
   ) throws TuumException {
-    log.info("Create transaction: {}", createTransactionRequest);
+    log.info("Create transaction for user {}: {}", accountId, createTransactionRequest);
     Transaction transaction = mapToTransaction(accountId, createTransactionRequest);
-    Optional<Account> account = getAccountById(accountId);
-    validateTransaction(account, transaction);
+    validateTransaction(getAccountById(accountId), transaction);
     switch (transaction.getDirection()) {
       case IN -> increaseBalance(transaction);
       case OUT -> decreaseBalance(transaction);
       default -> throw new TuumInvalidInputException("invalid direction");
     }
     accountMapper.createTransaction(transaction);
-    return createResponse(transaction, accountMapper.getAccountById(accountId));
+    CreateTransactionResponse createTransactionResponse =
+        createResponse(transaction, accountMapper.getAccountById(accountId));
+    eventPublisher.transactionCreated(transaction);
+    eventPublisher.balanceChanged(createTransactionResponse);
+    return createTransactionResponse;
   }
 
   private void increaseBalance(Transaction transaction) {
