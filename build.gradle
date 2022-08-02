@@ -50,9 +50,21 @@ dependencies {
     integrationTestImplementation 'org.testcontainers:rabbitmq:1.17.2'
 }
 
-tasks.named('test') {
+
+task integrationTest(type: Test) {
+    description = 'Runs integration tests.'
+    group = 'verification'
+
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    shouldRunAfter test
+}
+
+tasks.withType(Test) {
     useJUnitPlatform()
 }
+
+check.dependsOn integrationTest
 
 bootBuildImage {
     imageName = "metsmarko/tuum-account"
