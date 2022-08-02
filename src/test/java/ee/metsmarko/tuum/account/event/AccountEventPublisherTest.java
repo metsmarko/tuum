@@ -64,6 +64,9 @@ class AccountEventPublisherTest {
         mapper.readValue(captor.getValue(), TransactionCreateEvent.class);
     assertEquals(transaction.getId(), event.transactionId());
     assertEquals(transaction.getAccountId(), event.accountId());
+    assertEquals(transaction.getAmount(), event.amount());
+    assertEquals(transaction.getCurrency(), event.currency());
+    assertEquals(transaction.getDirection(), event.direction());
   }
 
   @Test

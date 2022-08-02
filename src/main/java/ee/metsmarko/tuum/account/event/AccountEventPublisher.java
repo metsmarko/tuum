@@ -37,7 +37,11 @@ public class AccountEventPublisher {
 
   public void transactionCreated(Transaction transaction) {
     publishEvent(
-        NEW_TX_KEY, new TransactionCreateEvent(transaction.getId(), transaction.getAccountId())
+        NEW_TX_KEY,
+        new TransactionCreateEvent(
+            transaction.getId(), transaction.getAccountId(), transaction.getAmount(),
+            transaction.getCurrency(), transaction.getDirection()
+        )
     );
   }
 

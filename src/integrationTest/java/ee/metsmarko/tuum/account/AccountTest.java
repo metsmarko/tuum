@@ -209,6 +209,9 @@ public class AccountTest {
         mapper.readValue(readQueue().getBody(), TransactionCreateEvent.class);
     assertEquals(createTransactionResponse.transactionId(), tcEvent.transactionId());
     assertEquals(createTransactionResponse.accountId(), tcEvent.accountId());
+    assertEquals(createTransactionResponse.amount(), tcEvent.amount());
+    assertEquals(createTransactionResponse.currency(), tcEvent.currency());
+    assertEquals(createTransactionResponse.direction(), tcEvent.direction());
 
     BalanceChangeEvent bcEvent = mapper.readValue(readQueue().getBody(), BalanceChangeEvent.class);
     assertEquals(createTransactionResponse.accountId(), bcEvent.accountId());
